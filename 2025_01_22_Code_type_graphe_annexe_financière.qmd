@@ -1,0 +1,816 @@
+---
+title: "Etude annexe financière"
+author: "US 1502 - Unité de service d'appui aux PEPR (INRAE)"
+format: html
+editor: visual
+---
+
+## I/ Librairies
+
+```{r}
+#| echo: false
+
+# Fichier Excel
+library(readxl)
+library(writexl)
+
+# Graphe
+library(ggplot2)
+library(tibble)
+library(readr)
+library(reshape2)
+library(ggpubr)
+library(dplyr)
+library(forcats)
+library(cowplot)
+library(scales)
+
+# Couleurs
+library(wesanderson)
+library(Polychrome)
+library(paletteer)
+library(pals)
+library(RColorBrewer)
+```
+
+## II/ Fonctions
+
+## III / Principal
+
+### Introduction
+
+```{r}
+data <- read_excel("C:/Users/mjoigneau/Nextcloud/MyDrive/4_Codes_types/Etude_annexe_financière/2024_07_02_Excel_exemple_annexe_financière.xlsx")
+```
+
+Couleurs de FORESTT
+
+```{r}
+# Couleur principale de FORESTT
+vert_fonce <- rgb(70, 114, 75, maxColorValue = 255) # #46724B
+
+# Nuances complémentaires de FORESTT
+vert_clair1 <- rgb(104, 165, 50, maxColorValue = 255) # #68A532
+vert_clair2 <- rgb(153, 194, 33, maxColorValue = 255) # #99C221
+
+# Couleurs secondaires de FORESTT
+bleu <- rgb(0, 0, 145, maxColorValue = 255) # #000091
+
+# Autres couleurs qui vont avec
+gold4 <- "darkgoldenrod4"
+gold3 <- "darkgoldenrod3"
+gold2 <- "darkgoldenrod2"
+gold1 <- "darkgoldenrod1"
+beige4 <-  "wheat4"
+beige3 <- "wheat3"
+beige2 <- "wheat2"
+beige1 <- "wheat1"
+```
+
+Couleurs des graphes
+
+```{r}
+# Couleurs
+couleur1princ <- vert_fonce
+couleur1second <- vert_clair1
+couleur2second <- vert_clair2
+couleur3second <- bleu
+couleur1autre <- beige3
+couleur2autre <- beige1
+```
+
+### Graphes
+
+#### 1) Histo budget par établissement + apport/aide
+
+##### Préparation
+
+```{r}
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour ce graphe
+data5 <- data
+# On ne garde que les 3 colonnes Etablissement, Aide demande et Apport
+data5 <- data5[,c(2,8,9)]
+
+### Les variables Apport et Aide demandée
+# On converti en numeric
+data5$`Aide demandée` <- as.numeric(data5$`Aide demandée`)
+data5$Apport <- as.numeric(data5$Apport)
+# Les NA deviennent des valeurs nulles
+data5$`Aide demandée`[is.na(data5$`Aide demandée`)] <- 0
+data5$Apport[is.na(data5$Apport)] <- 0
+
+### Transformation du jeu de données
+# On somme par Etablissement
+data5 <- data5 %>%
+  group_by(Etablissement)%>%
+  summarise_all(sum)
+
+### Le ratio apport / (apport + aide demandée)
+# Variable budget total
+Budget_total = data5$`Aide demandée` + data5$Apport
+# On créé la variable Ratio
+ratio <- round(data5$Apport/(data5$`Aide demandée` + data5$Apport)*100,0)
+# Et un dataframe
+df_ratio <- data.frame (Etablissement = data5$Etablissement, Ratio = ratio, Budget_total = Budget_total)
+
+### Transformation du jeu de données (part2)
+# On transforme le jeu de donnees pour mettre les 2 colonnes en variables
+data5 <- melt(data5, id.vars="Etablissement")
+# On renomme la colonne value
+names(data5)[2] <- "Origine"
+names(data5)[3] <- "Budget"
+# On convertie en M€
+#data5$Budget <- data5$Budget / 100000
+
+### L'ordre d'apparition
+# On change l'ordre du facteur Origine pour faire apparaître en bas l'aide demandée et en haut l'apport
+ordre_origine <- c("Apport", "Aide demandée") 
+data5 <- data5 %>%
+  mutate(Origine = factor(Origine, levels = ordre_origine))
+```
+
+##### Visualisation
+
+```{r}
+ggplot(data5, aes(x = fct_reorder(Etablissement, Budget, .desc = TRUE), Budget, fill = Origine)) + 
+  
+  ### Le graphique :
+  
+  #Bar et textes :
+  geom_bar(stat="identity",alpha=0.8,color="black")+
+  geom_text(aes(label = c(ratio,rep(NA,34)), 
+                y = c(Budget_total,Budget_total)), 
+            vjust = -0.5, 
+            color = "black",
+            show.legend = TRUE) +
+
+  ### Les détails de présentation :
+  
+  # On met les couleurs
+  scale_fill_manual(values = c(couleur1princ,couleur1second) )+
+  guides(color = guide_legend(override.aes = list(size = 6, shape = 15))) +
+  # Titres
+  labs(y = "Budget total (M€)",x="Etablissement", title = "Répartition du budget total des 5 projets ciblés de FORESTT par établissement") +
+  labs(subtitle = "Avec ratio apport / (apport + aide demandée)")+
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # On veut des valeurs entières et non scientifiques (1000 et non 10^3)
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) 
+```
+
+#### 2) Histo budget par établissement + projet
+
+##### Préparation
+
+```{r}
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour ce graphe
+data7 <- data
+
+### Budget
+# On veut la somme Aide demandée + Apport
+data7$Budget <- data7$`Aide demandée` + data7$Apport
+# On ne garde que les 3 colonnes Projet, Etablissement et Budget
+data7 <- data7[,c(1,2,11)]
+
+### Transformation du jeu de données
+# On converti en numeric et facteur
+data7$Budget <- as.numeric(data7$Budget)
+data7$Etablissement <- as.factor(data7$Etablissement)
+data7$Projet <- as.factor(data7$Projet)
+# Les NA deviennent des valeurs nulles
+data7$Budget[is.na(data7$Budget)] <- 0
+
+### On somme par Etablissement
+data7 <- data7 %>%
+  group_by(Etablissement, Projet)%>%
+  summarise_all(sum)
+
+### Transformation du jeu de données (part2)
+# On a un dataframe avec toutes les combinaisons possibles (donc des NA)
+combinations <- expand.grid(Etablissement = unique(data7$Etablissement), Projet = unique(data7$Projet))
+data_complete <- merge(combinations, data7, all.x = TRUE)
+# On converti les NA en 0
+data_complete$Budget[is.na(data_complete$Budget)] <- 0
+# Et on met des facteurs pour les établissements et les projets
+data_complete$Etablissement <- factor(data_complete$Etablissement, levels = unique(data_complete$Etablissement))
+data_complete$Projet <- factor(data_complete$Projet, levels = unique(data_complete$Projet))
+```
+
+##### Visualisation
+
+```{r}
+# On fait l'histogramme par ordre décroissant :
+ggplot(data_complete, aes(x = reorder(Etablissement, -Budget), y = Budget, fill = Projet)) +
+  
+  geom_bar(stat = "identity", alpha = 0.8, color = "black") +
+  
+  scale_fill_manual(values = c(couleur1princ,couleur1second, couleur2second, couleur1autre, couleur2autre)) +
+  
+  ### Les détails de présentation :
+  # Titres
+  labs(y = "Budget total (M€)", x = "Etablissement", title = "Répartition du budget total de FORESTT par établissement et projet ciblé") +
+  labs(subtitle = "(Aide demandée + apport)") +
+  labs(fill = "Projet ciblé") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # On veut des valeurs entières et non scientifiques (1000 et non 10^3)
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE))
+```
+
+#### 3) Camembert aide demandé par projet
+
+##### Préparation
+
+```{r}
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour les 5 camemberts
+data_cam <- data
+
+### Transformation du jeu de données
+# On ne garde que les 3 colonnes Projet, Etablissement et Aide demande
+data_cam <- data_cam[,c(1,2,8)]
+# On converti en numeric
+data_cam$`Aide demandée` <- as.numeric(data_cam$`Aide demandée`)
+# Les NA deviennent des valeurs nulles
+data_cam$`Aide demandée`[is.na(data_cam$`Aide demandée`)] <- 0
+# On renomme la colonne Aide.demandée
+names(data_cam)[3] <- "Aide"
+
+### On somme par projet et établissement
+data_cam <- data_cam %>%
+  group_by(Projet, Etablissement)%>%
+  summarise_all(sum)
+
+### Transformation du jeu de données (part2)
+# On a un dataframe avec toutes les combinaisons possibles (donc des NA)
+combinations2 <- expand.grid(Etablissement = unique(data_cam$Etablissement), Projet = unique(data_cam$Projet))
+data_cam <- merge(combinations2, data_cam, all.x = TRUE)
+# On convertie les NA en 0
+data_cam$Aide[is.na(data_cam$Aide)] <- 0
+# Et on met bien les facteurs
+data_cam$Etablissement <- factor(data_cam$Etablissement, levels = unique(data_cam$Etablissement))
+data_cam$Projet <- factor(data_cam$Projet, levels = unique(data_cam$Projet))
+
+
+# On met par ordre alphabétique des établissements
+data_cam$Etablissement <- as.character(data_cam$Etablissement)
+data_cam <- data_cam[order(data_cam$Etablissement),]
+data_cam$Etablissement <- as.factor(data_cam$Etablissement)
+
+
+# Couleurs communes des camemberts
+col_cam <- c(stepped2(20)[c(1:4)],
+             stepped2(20)[c(9:16)],
+             couleur1princ,couleur1second, couleur2second, "#bae4b3",
+             stepped2(20)[c(17:20)],
+             stepped3(20)[-c(9:12)])
+```
+
+##### Visualisation
+
+Le graphe est à répéter pour tous les projets concernés
+
+```{r}
+list_projet <- unique(data$Projet)
+print(list_projet)
+
+projet_i = "FORESTT-HUB"
+```
+
+```{r}
+# -------------- Préparation du jeu de données --------------------------------
+
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour ce graphe
+data1 <- data_cam[data_cam$Projet==projet_i,]
+
+### Transformation du jeu de données
+# On rajoute une colonne pourcentage qu'on calcule
+data1 <- data1 %>% 
+  mutate(Percentage = round(Aide/sum(Aide)*100,0))
+# On met en NA ceux qui sont vers 0
+data1$Percentage[data1$Percentage<3] <- NA
+# On met des % pour la visualisation
+data1$Percentage[is.na(data1$Percentage)==FALSE] <- paste(data1$Percentage[is.na(data1$Percentage)==FALSE],"%",sep="")
+
+### Préparation pour le sous-titre
+# Total budget a rajouter au sous-titre
+# On le divise par 1M€ et on l'arrondi
+total1 = format(round((sum(data1$Aide))/1000000), scientific = FALSE, big.mark = '.')
+# Nombre d'établissements à rajouter au sous-titre
+nb_ONR1 = length(unique(data1[data1$Aide!=0,]$Etablissement))
+
+
+# -------------- Le graphique -------------------------------------------------
+
+g1 <- ggplot(data1, aes(x=1, y=Aide, fill=Etablissement)) +
+  
+  ### Les graphes
+  geom_bar(stat="identity") +
+  # Les couleurs
+  scale_fill_manual(values=col_cam)+
+  
+  ### Transformation en camembert
+  coord_polar(theta='y') +
+
+  ### Les détails de présentation :
+  # Titres
+  labs(title = paste("Aide demandée en M€ pour",projet_i,sep=" ")) +
+  labs(subtitle = paste("(",total1,"M€ pour ",nb_ONR1, " établissements)",sep=""))+
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    legend.background = element_blank(),  # Enlève le fond gris de la légende
+    legend.key = element_blank(),         # Enlève le fond gris derrière les symboles de la légende
+    # Disparition de l'axe en x
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Contours noirs
+  geom_bar(stat="identity", color='black') +
+  theme(axis.ticks=element_blank(),  # the axis ticks
+        axis.title=element_blank(),  # the axis labels
+        axis.text.y=element_blank()) +  # the 0.75, 1.00, 1.25 labels.
+  # On veut des valeurs entières et non scientifiques sur une échelle de M€
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE))+
+  
+  ### Les labels
+  geom_label(aes(label = Percentage),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) 
+
+g1
+```
+
+#### 4) Camembert budget par dépense
+
+##### Préparation
+
+```{r}
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour ce graphe
+data6 <- data
+
+### Transformation du jeu de données
+# On ne garde que les 3 colonnes Type de dépense et Aide demandée et Apport
+data6 <- data6[,c(3,8,9)]
+# On converti en numeric et factor
+data6$`Aide demandée` <- as.numeric(data6$`Aide demandée`)
+data6$Apport <- as.numeric(data6$Apport)
+data6$`Type de dépense` <- as.factor(data6$`Type de dépense`)
+# Les NA deviennent des valeurs nulles
+data6$`Aide demandée`[is.na(data6$`Aide demandée`)] <- 0
+data6$Apport[is.na(data6$Apport)] <- 0
+# On renomme les colonnes
+names(data6)[1] <- "Categorie"
+names(data6)[2] <- "Aide demandée"
+
+### On somme par projet et établissement
+data6 <- data6 %>%
+  group_by(Categorie)%>%
+  summarise_all(sum)
+
+### Transformation du jeu de données
+# On transforme le jeu de donnees pour mettre les 2 colonnes en variables
+data6 <- melt(data6, id.vars="Categorie")
+# On fusionne Categorie et source du budget (Aide ou Apport)
+data6$Categorie = paste(data6$Categorie,data6$variable,sep=" - ")
+# On enlève la colonne variable (aide demandée ou apport)
+data6 = data6[,-2]
+# Et on remet la colonne en ordre alphabétique
+data6 <- data6[order(data6$Categorie),]
+# On enlève les catégories avec un budget = 0
+data6 <- data6[-which(data6$value==0),]
+
+## On rajoute les projets avec 0 implication du candidat pour qu'ils soient à la fin
+# Création du dataframe avec les 0
+data6_0 <- data.frame(
+  Categorie = c("Equipement - Apport",
+                "Infrastructures ou plateformes - Apport"),
+  value = c(0, 0)
+)
+# Ajouter les nouvelles lignes au dataFrame existant
+data6 <- rbind(data6, data6_0)
+# On reset l'index
+rownames(data6) <- NULL
+
+# Mise en facteur
+data6$Categorie <- factor(data6$Categorie, levels = c(setdiff(unique(data6$Categorie), data6_0$Categorie), data6_0$Categorie))
+# On filtre pour l'affichage
+data6_filtered <- data6[which(data6$value>0),]
+
+### Transformation du jeu de données : on veut des pourcentages sur les coûts avec une frequence > 0
+# On rajoute une colonne pourcentage qu'on calcule
+pourc_data6_0 <- round((data6_filtered$value/sum(data6_filtered$value))*100,0)
+# On met en NA ceux qui sont vers 0
+pourc_data6_0[pourc_data6_0<3] <- NA
+# On met des % pour la visualisation
+pourc_data6_0[is.na(pourc_data6_0)==FALSE] <- paste(pourc_data6_0[is.na(pourc_data6_0)==FALSE],"%",sep="")
+
+### Préparation pour le sous-titre
+# Total budget a rajouter au sous-titre
+# On le divise par 1M€ et on l'arrondi
+total6 = format(round((sum(data6$value))/1000000), scientific = FALSE, big.mark = '.')
+
+### Mises en forme finales
+data6$Categorie <- as.factor(data6$Categorie)
+data6_filtered$Categorie <- as.factor(data6_filtered$Categorie)
+data6$value <- as.integer(data6$value)
+
+# Couleurs communes du camemberts AD/A
+col_cam6 <- c(stepped2(20)[c(3)], # equipement
+              stepped2(20)[c(15:16)], # facturation interne
+              stepped2(20)[c(19:20)], # fonctionnement
+              stepped2(20)[c(11)], # frais d'environnement
+              stepped3(20)[c(4)], # frais généraux
+              stepped3(20)[c(8)], # infrastructure ou plateforme (seul)
+              stepped3(20)[c(14:15)], # mission
+              couleur1second,couleur2second,# personnel
+              stepped3(20)[c(19:20)], # prestation
+              "white", "white") # égaux à 0 (reste)
+```
+
+##### Visualisation
+
+```{r}
+ggplot(data6, aes(x=1, y=value, fill=Categorie)) +
+  
+  ### Les graphes
+  geom_bar(stat="identity") +
+  # Les couleurs
+  scale_fill_manual(values=col_cam6)+
+  
+  ### Transformation en camembert
+  coord_polar(theta='y', start = 0) +
+  
+  ### Les détails de présentation :
+  # Titres
+  labs(title = "Budget total de FORESTT par type de dépense en M€") +
+  labs(fill = "Type de dépense") +
+  labs(subtitle = paste("(Total = ",total6,"M€)",sep=""))+
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    legend.background = element_blank(),  # Enlève le fond gris de la légende
+    legend.key = element_blank(),         # Enlève le fond gris derrière les symboles de la légende
+    # Disparition de l'axe en x
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Contours noirs
+  geom_bar(stat="identity", color='black') +
+  theme(axis.ticks=element_blank(),  # the axis ticks
+        axis.title=element_blank(),  # the axis labels
+        axis.text.y=element_blank()) +  # the 0.75, 1.00, 1.25 labels.
+  # On veut des valeurs entières et non scientifiques sur une échelle de M€
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) +
+  
+  ### Les labels
+  geom_label(data = data6_filtered,
+             aes(label = pourc_data6_0),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) 
+  
+```
+
+#### 5) Camembert aide par dépense
+
+##### Préparation
+
+```{r}
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour ce graphe
+data7 <- data
+
+### Transformation du jeu de données
+# On ne garde que les 2 colonnes Type de dépense et Aide demandée
+data7 <- data7[,c(3,8)]
+# On converti en numeric et factor
+data7$`Aide demandée` <- as.numeric(data7$`Aide demandée`)
+data7$`Type de dépense` <- as.factor(data7$`Type de dépense`)
+# Les NA deviennent des valeurs nulles
+data7$`Aide demandée`[is.na(data7$`Aide demandée`)] <- 0
+# On renomme les colonnes
+names(data7)[1] <- "Categorie"
+names(data7)[2] <- "value"
+
+### On somme par projet et établissement
+data7 <- data7 %>%
+  group_by(Categorie)%>%
+  summarise_all(sum)
+
+### Transformation du jeu de données
+# On enlève les catégories avec un budget = 0
+data7 <- data7[-which(data7$value==0),]
+# On reset l'index
+rownames(data7) <- NULL
+
+# Mise en facteur
+#data7$Categorie <- factor(data7$Categorie, levels = c(setdiff(unique(data7$Categorie), data7_0$Categorie), data7_0$Categorie))
+# On filtre pour l'affichage
+data7_filtered <- data7[which(data7$value>0),]
+
+### Transformation du jeu de données : on veut des pourcentages sur les coûts avec une frequence > 0
+# On rajoute une colonne pourcentage qu'on calcule
+pourc_data7_0 <- round((data7_filtered$value/sum(data7_filtered$value))*100,0)
+# On met en NA ceux qui sont vers 0
+pourc_data7_0[pourc_data7_0<3] <- NA
+# On met des % pour la visualisation
+pourc_data7_0[is.na(pourc_data7_0)==FALSE] <- paste(pourc_data7_0[is.na(pourc_data7_0)==FALSE],"%",sep="")
+
+### Préparation pour le sous-titre
+# Total budget a rajouter au sous-titre
+# On le divise par 1M€ et on l'arrondi
+total7 = format(round((sum(data7$value))/1000000), scientific = FALSE, big.mark = '.')
+
+### Mises en forme finales
+data7$Categorie <- as.factor(data7$Categorie)
+data7_filtered$Categorie <- as.factor(data7_filtered$Categorie)
+data7$value <- as.integer(data7$value)
+
+# Couleurs communes du camemberts AD/A
+col_cam7 <- c(stepped2(20)[c(3)], # equipement
+              stepped2(20)[c(15)], # facturation interne
+              stepped2(20)[c(19)], # fonctionnement
+              stepped3(20)[c(4)], # frais généraux
+              stepped3(20)[c(8)], # infrastructure ou plateforme (seul)
+              stepped3(20)[c(14)], # mission
+              couleur1second,# personnel
+              stepped3(20)[c(19)])
+
+```
+
+##### Visualisation
+
+```{r}
+ggplot(data7, aes(x=1, y=value, fill=Categorie)) +
+  
+  ### Les graphes
+  geom_bar(stat="identity") +
+  # Les couleurs
+  scale_fill_manual(values=col_cam7)+
+  
+  ### Transformation en camembert
+  coord_polar(theta='y', start = 0) +
+  
+  ### Les détails de présentation :
+  # Titres
+  labs(title = "Aide demandée de FORESTT par type de dépense en M€") +
+  labs(fill = "Type de dépense") +
+  labs(subtitle = paste("(Total = ",total7,"M€)",sep=""))+
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    legend.background = element_blank(),  # Enlève le fond gris de la légende
+    legend.key = element_blank(),         # Enlève le fond gris derrière les symboles de la légende
+    # Disparition de l'axe en x
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Contours noirs
+  geom_bar(stat="identity", color='black') +
+  theme(axis.ticks=element_blank(),  # the axis ticks
+        axis.title=element_blank(),  # the axis labels
+        axis.text.y=element_blank()) +  # the 0.75, 1.00, 1.25 labels.
+  # On veut des valeurs entières et non scientifiques sur une échelle de M€
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) +
+  
+  ### Les labels
+  geom_label(data = data7_filtered,
+             aes(label = pourc_data7_0),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE)
+
+```
+
+#### 6) Camembert apport par dépense
+
+##### Préparation
+
+```{r}
+### Le jeu de données
+# Copie du jeu de données pour le modifier uniquement pour ce graphe
+data8 <- data
+
+### Transformation du jeu de données
+# On ne garde que les 2 colonnes Type de dépense et Aide demandée
+data8 <- data8[,c(3,9)]
+# On converti en numeric et factor
+data8$Apport <- as.numeric(data8$Apport)
+data8$`Type de dépense` <- as.factor(data8$`Type de dépense`)
+# Les NA deviennent des valeurs nulles
+data8$Apport[is.na(data8$Apport)] <- 0
+# On renomme les colonnes
+names(data8)[1] <- "Categorie"
+names(data8)[2] <- "value"
+
+### On somme par type de dépense
+data8 <- data8 %>%
+  group_by(Categorie)%>%
+  summarise_all(sum)
+
+### Transformation du jeu de données
+# On enlève les catégories avec un budget = 0
+data8 <- data8[-which(data8$value==0),]
+# On reset l'index
+rownames(data8) <- NULL
+
+### On rajoute les projets avec 0 implication du candidat pour qu'ils soient à la fin
+# Création du dataframe avec les 0
+data8_0 <- data.frame(
+  Categorie = c("Equipement",
+                "Infrastructures ou plateformes"),
+  value = c(0, 0)
+)
+# Ajouter les nouvelles lignes au dataFrame existant
+data8 <- rbind(data8, data8_0)
+# On reset l'index
+rownames(data8) <- NULL
+# Mise en facteur et changement du level pour que les catégories vides apparaissent à la fin du camembert
+data8$Categorie <- factor(data8$Categorie, levels = c(unique(data8$Categorie)))
+
+# Mise en facteur
+#data7$Categorie <- factor(data7$Categorie, levels = c(setdiff(unique(data7$Categorie), data7_0$Categorie), data7_0$Categorie))
+# On filtre pour l'affichage
+data8_filtered <- data8[which(data8$value>0),]
+
+### Transformation du jeu de données : on veut des pourcentages sur les coûts avec une frequence > 0
+# On rajoute une colonne pourcentage qu'on calcule
+pourc_data8_0 <- round((data8_filtered$value/sum(data8_filtered$value))*100,0)
+# On met en NA ceux qui sont vers 0
+pourc_data8_0[pourc_data8_0<3] <- NA
+# On met des % pour la visualisation
+pourc_data8_0[is.na(pourc_data8_0)==FALSE] <- paste(pourc_data8_0[is.na(pourc_data8_0)==FALSE],"%",sep="")
+
+### Préparation pour le sous-titre
+# Total budget a rajouter au sous-titre
+# On le divise par 1M€ et on l'arrondi
+total8 = format(round((sum(data8$value))/1000000), scientific = FALSE, big.mark = '.')
+
+### Mises en forme finales
+# data8$Categorie <- as.factor(data8$Categorie)
+# data8_filtered$Categorie <- as.factor(data8_filtered$Categorie)
+# data8$value <- as.integer(data8$value)
+
+# Couleurs communes du camemberts AD/A
+col_cam8 <- c(
+   #stepped2(20)[c(3)], # equipement
+              stepped2(20)[c(15)], # facturation interne
+              stepped2(20)[c(19)], # fonctionnement
+              stepped3(20)[c(4)], # frais généraux
+              # stepped3(20)[c(8)], # infrastructure ou plateforme (seul)
+              stepped3(20)[c(14)], # mission
+              couleur1second,# personnel
+              stepped3(20)[c(19)],
+              "white",
+              "white")
+```
+
+##### Visualisation
+
+```{r}
+ggplot(data8, aes(x=1, y=value, fill=Categorie)) +
+  
+  ### Les graphes
+  geom_bar(stat="identity") +
+  # Les couleurs
+  scale_fill_manual(values=col_cam8)+
+  
+  ### Transformation en camembert
+  coord_polar(theta='y', start = 0) +
+  
+  ### Les détails de présentation :
+  # Titres
+  labs(title = "Apport de FORESTT par type de dépense en M€") +
+  labs(fill = "Type de dépense") +
+  labs(subtitle = paste("(Total = ",total8,"M€)",sep=""))+
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    legend.background = element_blank(),  # Enlève le fond gris de la légende
+    legend.key = element_blank(),         # Enlève le fond gris derrière les symboles de la légende
+    # Disparition de l'axe en x
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Contours noirs
+  geom_bar(stat="identity", color='black') +
+  theme(axis.ticks=element_blank(),  # the axis ticks
+        axis.title=element_blank(),  # the axis labels
+        axis.text.y=element_blank()) +  # the 0.75, 1.00, 1.25 labels.
+  # On veut des valeurs entières et non scientifiques sur une échelle de M€
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) +
+  
+  ### Les labels
+  geom_label(data = data8_filtered,
+             aes(label = pourc_data8_0),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE)
+```
+
+
+
+#### 7) Nuage de mots
+
+```{r}
+# Vecteur avec le texte :
+text <- data$Intitulé
+# Corpus :
+docs <- Corpus(VectorSource(text))
+
+# Nettoyage du corpus :
+docs <- docs %>%
+  # On enlève les nombres
+  #tm_map(removeNumbers) %>%
+  # On enlève les apostrophes
+  tm_map(content_transformer(function(x) gsub("d'", " ", x))) %>%
+  tm_map(content_transformer(function(x) gsub("l'", " ", x))) %>%
+  # On enlève les apostrophes
+  tm_map(content_transformer(function(x) gsub("'", " ", x))) %>%
+  tm_map(content_transformer(function(x) gsub("’", " ", x))) %>%
+  # On enlève la ponctuation
+  tm_map(removePunctuation) %>%
+  # On enlève les espaces blancs superflus
+  tm_map(stripWhitespace) %>%
+  # On convertie le texte en minuscule
+  tm_map(content_transformer(tolower)) %>%
+  # On enlève les mots vides en anglais et en français
+  tm_map(removeWords, stopwords("english")) %>%
+  tm_map(removeWords, stopwords("french"))
+
+
+# Création d'une matrice des mots et fréquences
+dtm <- TermDocumentMatrix(docs) 
+matrix <- as.matrix(dtm) 
+words <- sort(rowSums(matrix),decreasing=TRUE) 
+df_cloud <- data.frame(word = names(words),freq=words)
+```
+
+
+```{r}
+# Génération du nuage de mot
+set.seed(1234)
+par(mar = c(0, 0, 0, 0))
+wordcloud(
+  words = df_cloud$word,
+  freq = df_cloud$freq,
+  min.freq = 1,
+  max.words = Inf,
+  random.order = FALSE,
+  rot.per = 0.35,
+  scale=c(1,0.5), # taille max, taille min
+  colors = brewer.pal(8, "Dark2")
+)
+```

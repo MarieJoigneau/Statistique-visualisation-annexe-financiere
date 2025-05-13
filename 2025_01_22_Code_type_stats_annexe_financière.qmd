@@ -1,0 +1,821 @@
+---
+title: "Code type stats annexes financières"
+format: html
+editor: visual
+---
+
+## I/ Librairies
+
+```{r}
+#| echo: false
+
+# Fichier Excel
+library(readxl)
+library(writexl)
+
+# Graphe
+library(ggplot2)
+
+# Analyses statistiques
+library(FactoMineR)
+library(Factoshiny)
+library(factoextra)
+library(emmeans)
+
+# Corrélation
+library(corrplot)
+
+library(reshape2)
+library(rAmCharts)
+library(colourpicker)
+library(data.table)
+library(DT)
+library(magick)
+library(plotly)
+library(colourpicker)
+library(tidyverse)
+library(dplyr)
+library(Hmisc)
+library(dplyr)
+library(nnet)
+library(caret)
+library(pls)
+library(leaps)
+library(RcmdrMisc)
+library(heatmaply)
+library(ggpubr)
+library(rstatix)
+library(rpart)
+library(plyr)
+library(sparkline)
+library(car)
+library(vip)
+
+# Nuage de mots
+library(wordcloud)
+library(tm)
+```
+
+## II/ Fonctions
+
+## III / Principal
+
+### Introduction
+
+```{r}
+data <- read_excel("C:/Users/mjoigneau/Nextcloud/MyDrive/4_Codes_types/Etude_annexe_financière/2024_07_02_Excel_exemple_annexe_financière.xlsx")
+```
+
+Couleurs de FORESTT
+
+```{r}
+# Couleur principale de FORESTT
+vert_fonce <- rgb(70, 114, 75, maxColorValue = 255) # #46724B
+
+# Nuances complémentaires de FORESTT
+vert_clair <- rgb(104, 165, 50, maxColorValue = 255) # #68A532
+vert_clair2 <- rgb(153, 194, 33, maxColorValue = 255) # #99C221
+
+# Couleurs secondaires de FORESTT
+bleu <- rgb(0, 0, 145, maxColorValue = 255) # #000091
+
+# Autres couleurs qui vont avec
+gold4 <- "darkgoldenrod4"
+gold3 <- "darkgoldenrod3"
+gold2 <- "darkgoldenrod2"
+gold1 <- "darkgoldenrod1"
+beige4 <-  "wheat4"
+beige3 <- "wheat3"
+beige2 <- "wheat2"
+beige1 <- "wheat1"
+```
+
+```{r}
+### Transformation du jeu de données
+# On converti au bon format
+data$Projet <- as.factor(data$Projet)
+data$Etablissement <- as.factor(data$Etablissement)
+data$`Type de dépense` <- as.factor(data$`Type de dépense`)
+data$`Type de contrat` <- as.factor(data$`Type de contrat`)
+data$Intitulé <- as.character(data$Intitulé)
+data$Unité <- as.factor(data$Unité)
+data$`Nb p.mois` <- as.numeric(data$`Nb p.mois`)
+data$`Aide demandée` <- as.numeric(data$`Aide demandée`)
+data$Apport <- as.numeric(data$Apport)
+data$`Version du budget` <- as.character(data$`Version du budget`)
+# On renomme les colonnes nécessaires
+names(data)[3] <- "Type_dépense"
+names(data)[4] <- "Type_contrat"
+names(data)[7] <- "Nb_p.mois"
+names(data)[8] <- "Aide"
+
+### Ajout de variables
+data$Budget <- data$Aide + data$Apport
+
+### Si on veut étudier le nombre de mois
+data_nbmois <- data[is.na(data$Nb_p.mois)==FALSE,]
+```
+
+### Analyses statistiques
+
+#### 1) Etude quantitative
+
+```{r}
+### On focus sur les variables quantitatives suivants :
+# - Aide
+# - Apport
+# - Nb p.mois
+```
+
+##### a) Corrélation
+
+###### Apport / aide demandée
+
+```{r}
+## Correlations entre aide demandée et apport ?
+#  - a correlation is strong when in [-1,-0.5]U[0.5,1]
+# - positive correlation (R²=0.3; P<0.001), so the 2 values augment together but not that high
+# - it means that I can have not the two measures of size in the same model
+## Log2
+# - log limit variability, only for quantitative data (length, weight...)
+# - log2 instead of log for easier interpretation, 2 columns for each, one with, and one without (warning: interpreation of the graphs!)
+# - log2 explaination : https://rstudio-pubs-static.s3.amazonaws.com/13988_bb11d85b79b2436280de434988558140.html 
+cor.test(data$Aide, data$Apport) # corr = -0.07988081
+```
+
+```{r}
+ggplot(data, aes (x = Aide, y = Apport, color = vert_fonce))+
+  
+  ### Les graphes :
+  geom_point(size = 3) +
+  geom_smooth(method='lm') +
+  
+  ### Les détails de présentation :
+  
+  # On met les couleurs
+  scale_color_manual(values = c(vert_fonce))+
+  # Titres
+  labs(y = "Apport (en M€)", x="Aide demandée (en M€)", title = "Apport en fonction de l'aide demandée (en M€)") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "none") +
+  # On veut des valeurs entières et non scientifiques en M€
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) +
+  scale_x_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) 
+```
+
+######Apport / aide demandée et nb mois
+
+```{r}
+### Mise en forme des données
+# On prend les lignes avec des données sur le nombre de mois
+df1 <- data[is.na(data$Nb_p.mois)==FALSE,]
+# On garde les 3 variables
+df1 <- df1[,c(7:9)]
+
+### Tests de corrélation
+cor.test(df1$Nb_p.mois, df1$Apport) # corr = 0.4601469
+cor.test(df1$Nb_p.mois, df1$Aide) # corr = 0.6533957
+
+# On met Apport / Aide en variable
+df1 <- melt(df1, id.vars="Nb_p.mois")
+```
+
+```{r}
+ggplot(df1, aes (x = Nb_p.mois, y = value, color = variable))+
+  
+  ### Les graphes :
+  geom_point(size = 3) +
+  geom_smooth(method='lm') +
+  
+  ### Les détails de présentation :
+
+  # On met les couleurs
+  scale_color_manual(values = c(vert_fonce,vert_clair2),
+                     labels = c("Aide demandée", "Apport"))+
+  # Titres
+  labs(y = "Budget (en M€)", x="Nombre de mois", 
+       title = "Budget en fonction du nombre de mois (en M€)",
+       color = "Type de budget") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Légende
+  #
+  # On veut des valeurs entières et non scientifiques, et réduit au M€
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) 
+
+```
+
+##### b) Matrice de corrélation
+
+```{r}
+### Mise en forme des données
+# On prend les lignes avec des données sur le nombre de mois
+mat <- data[is.na(data$Nb_p.mois)==FALSE,]
+# On enlève les 5 lignes avec un NA pour Apport et Aide (en attente de Fanny)
+mat <- mat[is.na(mat$Aide)==FALSE,]
+mat <- mat[is.na(mat$Apport)==FALSE,]
+# On met une matrice
+mat <- as.matrix(mat[,c(7:9)])
+```
+
+```{r}
+#https://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
+# Matrice of p-value of the correlation tests
+
+cor.mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    p.mat<- matrix(NA, n, n)
+    diag(p.mat) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+        }
+    }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+
+# matrix of the p-value of the correlation
+p.mat <- cor.mtest(mat)
+head(p.mat[, 1:3])
+```
+
+```{r}
+### Matrice de corrélation
+# Matrice brute
+mat.cor <- cor(mat)
+print(cor(mat))
+```
+
+```{r}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+
+corrplot::corrplot(cor(mat), method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         p.mat = p.mat, sig.level = 0.01, insig = "blank",  # leave blank on non-significant coefficient
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         )
+```
+
+##### c) Regréssion linéaire
+
+```{r}
+df3 <- data_nbmois[,c(7:9)]
+
+### Test global des variables
+# On retrouve significativité de la relation apport / mois et aide / mois
+summary(lm(Apport ~ Nb_p.mois, data=df3))
+summary(lm(Aide ~ Nb_p.mois, data=df3))
+summary(lm(Aide ~ Apport, data=df3))
+```
+
+#### 2) Etude qualitative
+
+##### a) Test khi-2
+
+```{r}
+### On focus sur les variables qualitatives suivantes :
+# - Projet
+# - Etablissement
+# - Type de dépense
+# - Type de contrat
+# - Unité
+```
+
+```{r}
+### Le test
+# Le test du khi-deux d'indépendance vérifie si deux variables sont susceptibles d'être liées ou pas.
+# Test entre les variables catégorielles (Test de pearson)
+# Si p-value < 0.05, l'hypothèse d'indépendance entre les deux variables est rejetée.
+
+### Approximation qui peut être incorrecte
+# S'il y a un message indiquant que l'approximation du chi carré peut être incorrecte. 
+# = Le problème est que l’approximation du chi carré de la distribution de la statistique du test repose sur le fait que les décomptes sont à peu près normalement distribués.
+
+### Validité du test de khi-2 : 
+# - Des valeurs qui constituent un échantillon aléatoire simple issu de la 
+# population visée.
+# - Deux variables catégorielles ou nominales. 
+# N'utilisez pas le test d'indépendance avec des variables continues qui 
+# définissent des combinaisons de catégories. Cependant, les dénombrements pour 
+# les combinaisons des deux variables catégorielles seront continus.
+# - Pour chaque combinaison des niveaux des deux variables, nous avons besoin 
+# d'au moins cinq valeurs attendues. En cas d'un nombre inférieur à cinq, 
+# dans n'importe laquelle de ces combinaisons, les résultats du test ne sont 
+# pas fiables.
+```
+
+```{r}
+chisq.test(data$Projet,data$Type_dépense)
+# X-squared = 82.688, df = 32, p-value = 2.299e-06
+chisq.test(data$Etablissement,data$Type_dépense)
+# X-squared = 210.05, df = 264, p-value = 0.9938
+
+### Lien entre les unités, établissements et les projets
+chisq.test(data$Etablissement,data$Unité)
+# X-squared = 29450, df = 4521, p-value < 2.2e-16
+chisq.test(data$Projet,data$Unité)
+# X-squared = 2285.9, df = 548, p-value < 2.2e-16
+chisq.test(data$Projet,data$Etablissement)
+# X-squared = 1344.6, df = 132, p-value < 2.2e-16
+```
+
+```{r}
+### Création de la matrice
+# On prend toutes les variables qualitatives
+df2 <- data[,c(1:4,6)]
+mat2 <- matrix(NA, ncol(df2), ncol(df2), 
+               dimnames = list(colnames(df2), colnames(df2)))
+
+for (i in 1:ncol(df2)){
+  for (j in 1:ncol(df2)){
+    if (i != j) {
+      result <- chisq.test(df2[[names(df2)[i]]],df2[[names(df2)[j]]])
+      mat2 [i,j] <- result$p.value
+    }else{
+      mat2 [i,j] <- NA
+    }
+  }
+}
+```
+
+```{r}
+print(mat2)
+```
+
+```{r}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+
+corrplot::corrplot(mat2, method="color", col=col(200),  
+         type="upper", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         )
+```
+
+##### b) ACM
+
+```{r}
+#Factoshiny::Factoshiny(data[c(1:3,8:9)])
+res.MCA<- FactoMineR::MCA(data[c(1:3, 8:9)],quanti.sup=c(4,5),graph=FALSE)
+```
+
+```{r}
+FactoMineR::plot.MCA(res.MCA,col.var=c(1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3),title="Graphe de l'ACM",label =c('var'))
+```
+
+```{r}
+FactoMineR::plot.MCA(res.MCA, choix='var',title="Graphe des variables",col.var=c(1,2,3))
+```
+
+```{r}
+FactoMineR::plot.MCA(res.MCA, choix='quanti.sup',title="Variables quantitatives suplémentaires")
+```
+
+#### 3) Etude mixte
+
+```{r}
+### On focus sur les variables quantitatives suivants :
+# - Aide
+# - Apport
+# - Nb p.mois
+### Et les variables qualitatives suivantes :
+# - Projet
+# - Etablissement
+# - Type de dépense
+# - Type de contrat
+# - Unité
+```
+
+##### 1) ACP
+
+```{r}
+### Mise en forme des données
+# On prend les lignes avec des données sur le nombre de mois
+data_acp <- data[is.na(data$Nb_p.mois)==FALSE,]
+
+### Résultats de l'ACP
+res.pca <- PCA(data_acp[,c(7:9)], graph=FALSE, axes = c(1,2))
+res.pca
+```
+
+```{r}
+### ACP des individus
+fviz_pca_ind(res.pca, repel = TRUE,label="none", axes = c(1,2),col.ind="#E61C34") 
+# %>% fviz_add(res.pca$quali.sup$coord, color = "#4E4EBA", axes = c(1,2))
+
+```
+
+```{r}
+### ACP des individus par catégorie
+fviz_pca_ind(res.pca,
+                  geom.ind = "point", 
+                  col.ind = data_acp$Projet, 
+                  palette = terrain.colors(9),
+                  addEllipses = TRUE, 
+                  legend.title = "Projet ciblé", axes = c(1,2)) 
+#%>% fviz_add(res.pca$quali.sup$coord, color = "black", axes = c(1,2))
+```
+
+```{r}
+### ACP des variables
+fviz_pca_var(res.pca, col.var = "cos2", axes = c(1,2),
+                      gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+                      label="all"
+)
+```
+
+```{r}
+### Variance
+fviz_eig(res.pca, addlabels = TRUE, ylim = c(0, 70),barfill="#FC4E07",barcolor="#FC4E07")+
+           xlab("Percentage of explained variances") +
+           ylab("Dimensions") + 
+           labs(title="Eigen values")+
+           scale_fill_identity()+
+           theme_bw() +
+           theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank(), axis.line = element_line(colour = "black"))+
+           theme(plot.title = element_text(hjust = 0.5,size=9))
+
+```
+
+```{r}
+#### Résumé de l'ACP
+# on cherche à calculer le quantile de l'inertie des 2 premières dimensions si on permute le jeux de données
+permuteLigne <- function(v) {return(v[sample(1:length(v),replace=FALSE)])}
+
+test <- data_acp[,c(7:9)]
+
+nind <- nrow(test)
+nvar <- ncol(test)
+print(nind)
+print(nvar)
+nbsimul <- 1000
+iner <- NULL
+
+for (i in 1:nbsimul){
+  mat <- apply(test,2,permuteLigne)
+  iner <- c(iner,PCA(mat,graph=F)$eig[2,3])
+}
+
+# calcul de l'inertie du quantile
+a <- quantile(iner,0.95)
+
+# % l'inertie du jeux de donnees 
+b <- res.pca$eig[2,3]
+
+# L'inertie du jeu de donnée doit être plus grand que le quantile de l'inertie pour que ça soit OK
+print(paste0("Le quantile de l'inertie avec des lignes permutées est de ",round(a), " et l'inertie de nos 2 premières dimensions est ",round(b), "."))
+
+```
+
+##### 2) Analyse de la variance
+
+```{r}
+### Modèle d'analyse de la variance à factors avec interaction (ANOVA)
+# (Analysis of variance model : qualitative sources of variability)
+# (so not the quantitative explanatory variable which is the length)
+# model that we'll test :
+# ∀i,j,k with (i,j,k)≠(i’j,’,k’)
+# εijk ∼ N (0, σ) and cov(εijk,εi’j’k’)≠0
+# Y(i,j,k) = µ + α(i) + β(j) + (αβ)(i,j) + ε(k)
+# Y(i,j,k) Apport / Aide demandée / Budget total 
+# µ average  
+# α(i) effet du projet
+# β(j) effet de l'établissement
+# gamma(k) effet du type de dépense
+# teta (l) effet du type de contrat
+# delta(m) : effet de l'unité
+# (αβ)(i,j) effet de l'intéraction projet:établissement
+# ...
+# ε(n) variabilité résiduelle
+
+
+# ---------- ETAPE 1 : TEST DU MODELE GLOBAL (test global)
+# = comparaison avec le modele nul / constant
+
+# M1: Y(ij) = mu + alpha(i) + beta(j) + alpha.beta(ij) + epsilon(ijk)
+# -> valide a l'etape 1 = meilleur que Yijk = mu + epsilon(ijk)
+
+# ---------- ETAPE 2 : TESTER CHAQUE FACTEUR (test par facteur)
+# selection de modele
+# = interessant de garder l'interaction? Effet du milieu different en fonction du genotype
+
+# M2: Y(ij) = mu + alpha(i) + beta(j) + epsilon(ijk)
+
+# est ce que M2 est mieux que M1?
+# M2 est emboite dans M1 car M2 est un cas particulier de M1 (alpha.beta(ij)=0 pour tout ij)
+
+# Si M2 C M1, alors -2log(L(M2))-2log(L(M1)) suit loi khi2(df1-df2) df1-df2 = mesure de parcimonie
+#                   -2log(L(M2)/L(M1))=LR                           LR rapport de vraisemblance
+
+# ---------- ETAPE 3 : ANALYSE POST-HOC
+# on s'interesse aux modalites des facteurs qu'on a 
+# analyse post-hoc emmeans
+
+### Visualisation globale du jeu de données
+str(data)  
+dim(data)  
+summary(data)
+```
+
+###### P.mois par établissement
+
+```{r}
+### Phase de selection des effets
+ggplot(data, aes(y = Nb_p.mois, x = Etablissement)) +
+  
+  ### Le graphique :
+  
+  geom_boxplot(fill= vert_clair) +
+  geom_jitter(color="black", size=1.4, alpha=0.9) +
+  
+  ### Les détails de présentation :
+  
+  # Titres
+  labs( y = "Nombre de mois employé", x = "Etablissement", title = "Nombre de mois employé en fonction de l'établissement") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+### Comparaison avec le modèle nul
+# Modèle avec effet
+mod.nbpmois = lm(Nb_p.mois ~ Etablissement, data = data_nbmois)
+# Modèle nul
+mod.nbpmois.null = lm(Nb_p.mois ~ 1, data = data_nbmois)
+# Test de l'effet
+anova(mod.nbpmois.null,mod.nbpmois) # effet établissement
+# Table Anova
+Anova(mod.nbpmois,type="III") 
+summary(mod.nbpmois)
+
+### Etude post hoc entre les différents levels d'un effet
+em <- emmeans(mod.nbpmois,pairwise~Etablissement) # on met le facteur sur lequel on veut connaitre la valeur
+print(em)
+```
+
+###### Apport par établissement
+
+```{r}
+### Phase de selection des effets
+ggplot(data, aes(y = Apport, x = Etablissement)) +
+  
+  ### Le graphique :
+  
+  geom_boxplot(fill= vert_clair) +
+  geom_jitter(color="black", size=1.4, alpha=0.9) +
+  
+  ### Les détails de présentation :
+  
+  # Titres
+  labs( y = "Apport", x = "Etablissement", title = "Apport en fonction de l'établissement") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # On veut des valeurs entières et non scientifiques (1000 et non 10^3)
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE))
+```
+
+```{r}
+### Comparaison avec le modèle nul
+# Modèle avec effet
+mod.apport = lm(Apport ~ Etablissement, data = data)
+# Modèle nul
+mod.apport.null = lm(Apport ~ 1, data = data)
+# Test de l'effet
+anova(mod.apport.null,mod.apport) # pas d'effet établissement
+
+```
+
+###### Budget par établissement
+
+```{r}
+### Phase de selection des effets
+ggplot(data, aes(y = Budget, x = Etablissement)) +
+  
+  ### Le graphique :
+  
+  geom_boxplot(fill= vert_clair) +
+  geom_jitter(color="black", size=1.4, alpha=0.9) +
+  
+  ### Les détails de présentation :
+  
+  # Titres
+  labs( y = "Budget total (en M€)", x = "Etablissement", title = "Budget total en fonction de l'établissement") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # On veut des valeurs entières et non scientifiques (1000 et non 10^3)
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) 
+```
+
+```{r}
+### Comparaison avec le modèle nul
+# Modèle avec effet
+mod.budget = lm(Budget ~ Etablissement, data = data)
+# Modèle nul
+mod.budget.null = lm(Budget ~ 1, data = data)
+# Test de l'effet
+anova(mod.budget.null,mod.budget) # pas d'effet établissement (avec ou sans frais environnement et généraux)
+
+### Etude post hoc entre les différents levels d'un effet
+em3 <- emmeans(mod.budget,pairwise~Etablissement) # on met le facteur sur lequel on veut connaitre la valeur
+print(em3)
+```
+
+###### Aide demandée par type de dépense
+
+```{r}
+df4 <- data[data$Type_dépense!="Frais généraux",]
+df4 <- df4[df4$Type_dépense!="Frais d'environnement",]
+```
+
+```{r}
+ggplot(df4, aes(y = Aide, x = Type_dépense)) +
+  
+  ### Le graphique :
+  
+  geom_boxplot(fill= vert_clair) +
+  geom_jitter(color="black", size=1.4, alpha=0.9) +
+  
+  ### Les détails de présentation :
+  
+  # Titres
+  labs( y = "Aide demandée (en M€)", x = "Type de dépense", title = "Aide demandée par type de dépense") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # On veut des valeurs entières et non scientifiques (1000 et non 10^3)
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) 
+
+```
+
+```{r}
+### Comparaison avec le modèle nul
+# Modèle avec effet
+mod.aide2 = lm(Aide ~ Type_dépense, data = df4)
+# Modèle nul
+mod.aide.null2 = lm(Aide ~ 1, data = df4)
+# Test de l'effet
+anova(mod.aide.null2,mod.aide2) # effet type de dépense 2.048e-05
+# Table Anova
+Anova(mod.aide2,type="III") 
+summary(mod.aide2)
+
+
+### Etude post hoc entre les différents levels d'un effet
+em2 <- emmeans(mod.aide2,pairwise~Type_dépense) # on met le facteur sur lequel on veut connaitre la valeur
+print(em2)
+```
+
+###### Aide demandée par projet et établissement
+
+```{r}
+df5 <- data[data$Type_dépense!="Frais généraux",]
+df5 <- df5[df5$Type_dépense!="Frais d'environnement",]
+df5 <- df5[,c(1,2,8)]
+```
+
+```{r}
+ggplot(df5, aes(y = Aide, x = Etablissement, fill = Projet)) +
+  
+  ### Le graphique :
+  
+  geom_boxplot() +
+  geom_jitter(color="black", size=1, alpha=0.9) +
+  
+  ### Les détails de présentation :
+  
+  # Titres
+  labs( y = "Aide demandée (en M€)", x = "Etablissement", title = "Aide demandée par projet et établissement") +
+  # Thème sans cadre mais avec axes x et y
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    panel.background = element_blank(), 
+    axis.line = element_line(colour = "black"), # Ajoute les lignes des axes
+    axis.ticks = element_line(colour = "black"), # Ajoute les tick marks des axes
+    axis.text = element_text(colour = "black"), # Ajoute les labels des axes
+    axis.title = element_text(colour = "black") # Ajoute les titres des axes
+  ) +
+  # Titre au milieu
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(plot.subtitle = element_text(hjust = 0.5)) +
+  # Variables x penchées
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # On veut des valeurs entières et non scientifiques (1000 et non 10^3)
+  scale_y_continuous(labels = function(x) format(x/1000000, big.mark = ".",scientific = FALSE)) 
+
+```
+
+```{r}
+### Comparaison avec le modèle nul
+# Modèle avec effet
+mod.aide3 = lm(Aide ~ Projet, data = df5)
+mod.aide4 = lm(Aide ~ Etablissement, data = df5)
+# Modèle nul
+mod.aide.null3 = lm(Aide ~ 1, data = df5)
+# Test de l'effet
+anova(mod.aide.null3,mod.aide3) # effet projet p-value 0.03436 / 0.08627 avec env gen
+anova(mod.aide.null3,mod.aide4) # effet établissement p-value 0.01071 / 0.03925 avec env et gen
+# Table Anova
+# if p-value < 0.05, model1 fit less than model2 with anova(model1,model2)
+Anova(mod.aide3,type="III") 
+summary(mod.aide3)
+Anova(mod.aide4,type="III") 
+summary(mod.aide4)
+```
+
+```{r}
+### Ajout des 2 effets avec et sans interactions
+# S'il y des combinaisons qui n'existent pas, le modèle ne pourra par être ajusté correctement.
+# Test effets
+mod.aide5 = lm(Aide ~ Etablissement + Projet, data = df5)
+mod.aide6 = lm(Aide ~ Etablissement:Projet, data = df5)
+anova(mod.aide3,mod.aide5) # 0.02568
+anova(mod.aide4,mod.aide5) # 0.1686
+anova(mod.aide5,mod.aide6) # 0.8181
+# Table Anova
+Anova(mod.aide5,type="III") # établissement significatif, projet pas significatif
+#Anova(mod.aide6,type="III") # pas toutes les combinaisons représentées (coefficients aliased)
+```
